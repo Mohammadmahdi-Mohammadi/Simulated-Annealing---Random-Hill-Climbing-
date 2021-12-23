@@ -1,833 +1,656 @@
-/* " AI project "
-Hitori is played with a grid of squares or cells, with each cell initially containing a number. 
-The game is played by eliminating squares/numbers and this is done by blacking them out. The objective is to transform the grid to a state wherein all three following rules are true:
-
-1- no row or column can have more than one occurrence of any given number
-2- black cells cannot be adjacent, although they can be diagonal to one another.
-3- the remaining numbered cells must be all connected to each other, horizontally or vertically.
 
 
-2019 - December
-
-*/
-#include <windows.h>
-#include <stack>
-#include<iostream>
-#include<vector>
-#include<fstream>
-#include<utility>
+#include <iostream>
+#include <string>
+#include <fstream>
 #include <queue>
+#include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
-using namespace std;
-int number_of_size = 0;
-int expandingA = 0;
-int expandingHC = 0;
-int expandingRHC = 0;
-int expandingSA = 0;
-int expandingGreedy = 0;
+#include <math.h>
+
+
+auto constexpr __WHITE__ = true;
+auto constexpr __BLACK__ = false;
+auto constexpr __E__ = 2.71828;
+
+
+enum evaluateTypes { __HEURISTIC_COST__, __HEURISTIC__, __COST__ };
+enum AlgorithmEvaluation { __UCS__, __GREEDY__, __ASTAR__, __HILL_CLIMBING__, __S_HILL_CLIMBING__, __SA__ };
+enum Direction { __TOP__, __BOTTOM__, __LEFT__, __RIGHT__ };
+
+
+void _LogError(std::string e) {
+   std::cout << e << std::endl;
+   return;
+}
+
+struct nBoard {
+   //the Board which contain all the numbers in specefic cordination
+   int** _Board;
+   //Size of the board
+   int _Size;
+   //nBoard Constructor
+   nBoard(int** inp, int size) {
+       this->_Size = size;
+       this->_Board = new int* [this->_Size];
+       for (auto i = 0; i < this->_Size; i++) {
+           this->_Board[i] = new int[this->_Size];
+       }
+       for (auto i = 0; i < this->_Size; i++) {
+           for (auto j = 0; j < this->_Size; j++) {
+               this->_Board[i][j] = inp[i][j];
+           }
+       }
+   }
+   //Print all numbers in the board
+   void print_board() {
+       for (auto i = 0; i < this->_Size; i++) {
+           for (auto j = 0; j < this->_Size; j++) {
+               std::cout << this->_Board[i][j];
+           }
+       }
+   }
+};
 
 class State {
 private:
-	int Size;
-	int** board;
-	int** colorboard; // 0- colorless      1-white      2-black 
-	int h;
-	int h1;
-	friend class Hitori;
+   //Black and White board
+   bool** _Board;
+   //Size of the board -> **note that the sizes are equal in each direction
+   int _Size;
+
+   void _evaluateState(int type) {
+       //Heuristic #1
+       if (type == __HEURISTIC_COST__ || type == __HEURISTIC__)
+       {
+           int tmp = 0;
+           for (auto i = 0; i < this->_Size; i++) {
+               for (auto j = 0; j < this->_Size; j++) {
+                   if (this->_Board[i][j] == __BLACK__)
+                       tmp++;
+               }
+           }
+           this->_Hvlaue = (this->_Size * this->_Size) - tmp;
+           this->_Cost++;
+       }
+       else
+       {
+           this->_Cost++;
+       }
+       //Heuristc #2 -> defined in a private method in HitoriSolver class
+   }
+
+
+   std::vector<int> _get_neighbors(int i, int j) {
+       std::vector<int> res;
+       //check for top cell
+       if (j >= 1)
+           res.push_back(__TOP__);
+       //check for bottom cell
+       if (j < this->_Size - 1)
+           res.push_back(__BOTTOM__);
+       //check for left cell
+       if (i >= 1)
+           res.push_back(__LEFT__);
+       //check for right cell
+       if (i < this->_Size - 1) {
+           res.push_back(__RIGHT__);
+       }
+       return res;
+   }
+
+
 public:
-	void Read(string);
-	void print();
-	void Successor(Hitori*, State*, int);
-	bool Is_goal();
-	int Check(int, int, State*);
-	bool Surrounding(State*, int, int);
-	void Gredy(Hitori *);
-	void Hill_climbing(Hitori *, State*);
-	void Random_Hill_climbing(Hitori *temp, State*current_state);
-	void SA(Hitori *);
-	void Astar(Hitori *);
-	int Find_numer_of_same();
+   int _Cost;
+   int _Hvlaue;
 
-	//----------Constructor----------
-	State(const State& other) {
-		if (this != &other)
-			*this = other;
-	}
-	State() {
-		h = 0;
-		h1 = -1;
-		Size = 0;
-	}
+   State() {
+       this->_Size = 0;
+       this->_Hvlaue = 0;
+       this->_Cost = 0;
+   }
+   //Initialize a black and white board with all white values
+   State(int inp_size) {
+       this->_Cost = 0;
+       this->_Hvlaue = 0;
+       this->_Size = inp_size;
+       this->_Board = new bool* [this->_Size];
+       for (auto i = 0; i < this->_Size; i++) {
+           this->_Board[i] = new bool[this->_Size];
+       }
+       for (auto i = 0; i < this->_Size; i++) {
+           for (auto j = 0; j < this->_Size; j++) {
+               this->_Board[i][j] = __WHITE__;
+           }
+       }
+   }
+   //Copy Constructor
+   State(const State& other) {
+       this->_Size = other._Size;
+       this->_Board = other._Board;
+       this->_Cost = other._Cost;
+   }
+   //Copy Assignment
+   State& operator=(const State& other) {
+       if (this != &other) {
+           this->_Size = other._Size;
+           //this->_Board = other._Board;
+           this->_Board = new bool* [this->_Size];
+           for (auto i = 0; i < this->_Size; i++)
+               this->_Board[i] = new bool[this->_Size];
+           //Assign board with new values
+           for (auto i = 0; i < this->_Size; i++) {
+               for (auto j = 0; j < this->_Size; j++) {
+                   this->_Board[i][j] = other._Board[i][j];
+               }
+           }
+           this->_Cost = other._Cost;
+       }
+       return *this;
+   }
 
+   bool operator> (const State& other) {
+       if (&other == this) return false;
+       return (this->_Hvlaue + this->_Cost) > (other._Hvlaue + other._Cost);
+   }
 
+   //what's the value of a specific cell in the board
+   bool what_is(int coordinate_i, int coordinate_j) {
+       if (coordinate_i < 0 || coordinate_i >= this->_Size || coordinate_j < 0
+           || coordinate_j >= this->_Size) {
+           _LogError(std::to_string(coordinate_i) + " | " + std::to_string(coordinate_j));
+           _LogError("invalid input in <what_is> method ... the size is:" + std::to_string(this->_Size));
+           return NULL;
+       }
+       return this->_Board[coordinate_i][coordinate_j];
+   }
+   //set a value to a specific cell by it's value
+   void set_cell(int coordinate_i, int coordinate_j, bool value) {
+       if (coordinate_i < 0 || coordinate_i >= this->_Size || coordinate_j < 0
+           || coordinate_j >= this->_Size) {
+           _LogError("invalid input in <set_cell> method");
+           return;
+       }
+       this->_Board[coordinate_i][coordinate_j] = value;
+   }
 
-	//--------OPERATOR----------
-	State& operator = (const State& other) {
+   void printState() {
+       for (auto i = 0; i < this->_Size; i++) {
+           for (auto j = 0; j < this->_Size; j++) {
+               if (this->_Board[i][j] == __BLACK__)
+                   std::cout << " 0 ";
+               else
+                   std::cout << " 1 ";
+           }
+           std::cout << std::endl;
+       }
+       std::cout << std::endl;
+   }
 
-		this->Size = other.Size;
-		this->h = other.h;
-		this->h1 = other.h1;
-		this->board = new int*[other.Size];
-		this->colorboard = new int*[other.Size];
-		for (int i = 0; i < other.Size; i++) {
-			this->board[i] = new int[other.Size];
-			this->colorboard[i] = new int[other.Size];
-		}
+   //check the cordination which passed to argument is valid to making black or not
+   bool _is_valid_colorize(int i, int j) {
+       if (this->_Board[i][j] == __BLACK__)
+           return false;
+       std::vector<int> tmp = this->_get_neighbors(i, j);
+       for (auto a : tmp) {
+           //
+           //
+           //Top cell is available
+           //
+           //
+           if (a == __TOP__) {
+               //Condition 1 , 2
+               if (this->_Board[i][j - 1] == __BLACK__)
+                   return false;
+               //Condition 3 -> loop
+               auto I = this->_get_neighbors(i, j - 1);
+               bool flag = false;
+               for (int neighbor : I) {
+                   if (neighbor == __TOP__)
+                       if (this->_Board[i][j - 2] == __WHITE__)
+                           flag = true;
+                   if (neighbor == __LEFT__)
+                       if (this->_Board[i - 1][j - 1] == __WHITE__)
+                           flag = true;
+                   if (neighbor == __RIGHT__)
+                       if (this->_Board[i + 1][j - 1] == __WHITE__)
+                           flag = true;
+               }
+               if (!flag)
+               {
+                   return false;
+               }
+           }
+           //
+           //
+           //Bottom cell is available
+           //
+           //
+           if (a == __BOTTOM__) {
+               //Condition 1 , 2
+               if (this->_Board[i][j + 1] == __BLACK__)
+                   return false;
+               //Condition 3 -> loop
+               auto I = this->_get_neighbors(i, j + 1);
+               bool flag = false;
+               for (auto neighbor : I) {
+                   if (neighbor == __BOTTOM__) {
+                       if (this->_Board[i][j + 2] == __WHITE__)
+                           flag = true;
+                   }
+                   if (neighbor == __LEFT__) {
+                       if (this->_Board[i - 1][j + 1] == __WHITE__)
+                           flag =true;
+                   }
+                   if (neighbor == __RIGHT__) {
+                       if (this->_Board[i + 1][j + 1] == __WHITE__)
+                           flag = true;
+                   }
+               }
+               if (!flag) {
+                   return false;
+               }
+           }
+           //
+           //
+           //Left cell is available
+           //
+           //
+           if (a == __LEFT__) {
+               //Condition 1 , 2
+               if (this->_Board[i - 1][j] == __BLACK__) {
+                   return false;
+               }
+               //Condition 3 -> loop
+               auto I = this->_get_neighbors(i - 1, j);
+               bool flag = false;
+               for (auto neighbor : I) {
+                   if (neighbor == __TOP__)
+                       if (this->_Board[i - 1][j - 1] == __WHITE__)
+                           flag = true;
+                   if (neighbor == __LEFT__)
+                       if (this->_Board[i - 2][j] == __WHITE__)
+                           flag = true;
+                   if (neighbor == __BOTTOM__)
+                       if (this->_Board[i - 1][j + 1] == __WHITE__)
+                           flag = true;
+               }
+               if (!flag) {
+                   return false;
+              }
+           }
+           //
+           //
+           //Bottom cell is available
+           //
+           //
+           if (a == __RIGHT__) {
+               //Condition 1 , 2
+               if (this->_Board[i + 1][j] == __BLACK__)
+                   return false;
+               //Condition 3 -> loop
+               auto I = this->_get_neighbors(i + 1, j);
+               bool flag = false;
+               for (auto neighbor : I) {
+                   if (neighbor == __TOP__)
+                       if (this->_Board[i + 1][j - 1] == __WHITE__)
+                           flag = true;
+                   if (neighbor == __RIGHT__)
+                       if (this->_Board[i + 2][j] == __WHITE__)
+                           flag = true;
+                   if (neighbor == __BOTTOM__)
+                       if (this->_Board[i + 1][j + 1] == __WHITE__)
+                           flag = true;
+               }
+               if (!flag) {
+                   return false;
+               }
+           }
+       }
+       return true;
+   }
 
-		for (int i = 0; i<other.Size; i++)
-			for (int j = 0; j < other.Size; j++) {
-				this->board[i][j] = other.board[i][j];
-				this->colorboard[i][j] = other.colorboard[i][j];
-			}
-		return *this;
-	}
-	bool operator == (const State& other) {
-		for (int i = 0; i< Size; i++)
-			for (int j = 0; j <Size; j++)
-				if (this->board[i][j] != other.board[i][j] || this->colorboard[i][j] != other.colorboard[i][j])
-					return false;
-		return true;
-	}
-	bool operator < (const State& other) {
-		if (this->h < other.h)
-			return true;
-		return false;
-	}
-	bool operator > (const State& other) {
-		if (this->h > other.h)
-			return true;
-		return false;
-	}
-	bool operator >= (const State& other) {
-		if (this->h >= other.h)
-			return true;
-		return false;
-	}
-	bool operator <= (const State& other) {
-		if (this->h <= other.h)
-			return true;
-		return false;
-	}
+   int get_size() {
+       return this->_Size;
+   }
+
+   int get_cost() {
+       return this->_Cost;
+   }
+
+   void increment_cost() {
+       this->_Cost++;
+   }
+
+   void evaluate(int type) {
+       this->_evaluateState(type);
+   }
 };
 
-struct Hitori {
-	friend class State;
+bool operator< (const State& lhs, const State& rhs) {
+   return (lhs._Hvlaue + lhs._Cost) < (rhs._Hvlaue + rhs._Cost);
+}
+
+class HitoriSolver {
 private:
-	vector <State> vec_list;
-	struct Compare {
-		bool operator() (State left, State right) { return  left.h < right.h; }
-	};
-	priority_queue < State, vector<State>, Compare> _queue;
-	friend class State;
+   //Constant numbers board
+   nBoard* _NumbersBoard;
+   //Black and White board for the start state
+   State* _StartState;
+   //Size
+   int _Size;
+   //Priority Queue
+   std::priority_queue<State> _PQueue;
+   //SA and Hill Climbing successor temp
+   std::vector<State> _SA_Successors;
+   std::vector<State> _Hill_Climbing_Successors;
+
+   //Goal State
+   State _Found;
+
+
+   //Successor function -> create all possible next states
+   State _successor(State state, int type_of_value) {
+       this->_SA_Successors.erase(this->_SA_Successors.begin(), this->_SA_Successors.end());
+       this->_Hill_Climbing_Successors.erase(this->_Hill_Climbing_Successors.begin(), this->_Hill_Climbing_Successors.end());
+       State best;
+       for (auto i = 0; i < this->_Size; i++) {
+           for (auto j = 0; j < this->_Size; j++) {
+               if (state._is_valid_colorize(i, j)) {
+                   //if the algorithm is UCS -> just evaluate cost + just best successor needed
+                   if (type_of_value == __UCS__) {
+                       State tmp;
+                       tmp = state;
+                       tmp.set_cell(i, j, __BLACK__);
+                       tmp.evaluate(__COST__);
+                       if (tmp >  best)
+                           best = tmp;
+                   }
+                   //if the algorithm is Greedy -> just evaluate huristic + just best successor needed
+                   if (type_of_value == __GREEDY__) {
+                       State tmp;
+                       tmp = state;
+                       tmp.set_cell(i, j, __BLACK__);
+                       tmp.evaluate(__HEURISTIC__);
+                       if (tmp > best)
+                           best = tmp;
+                   }
+                   //if the algorithm is A* -> evaluate both of cost and huristic + all successors needed
+                   if (type_of_value == __ASTAR__) {
+                       State tmp;
+                       tmp = state;
+                       tmp.set_cell(i, j, __BLACK__);
+                       tmp.evaluate(__HEURISTIC_COST__);
+                       //evaluate_state(*tmp, __HEURISTIC_COST__);
+                       tmp.printState();
+                       //_LogError("####################");
+                       this->_PQueue.push(tmp);
+                   }
+                   //if the algorithm is Simple Hill Climbing -> evaluate just huristic + just best successor needed
+                   if (type_of_value == __HILL_CLIMBING__) {
+                       State tmp;
+                       tmp = state;
+                       tmp.set_cell(i, j, __BLACK__);
+                       tmp.evaluate(__HEURISTIC__);
+                       if (tmp > best)
+                           best = tmp;
+                   }
+                   //if the algorithm is Stochastic Hill Climbing -> evaluate just huristic + all successors needed
+                   if (type_of_value == __S_HILL_CLIMBING__) {
+                       State tmp;
+                       tmp = state;
+                       tmp.set_cell(i, j, __BLACK__);
+                       tmp.evaluate(__HEURISTIC__);
+                       this->_Hill_Climbing_Successors.push_back(tmp);
+                   }
+                   //if the algorithm is Simulated Anneling -> evaluate just huristic + all successors needed
+                   if (type_of_value == __SA__) {
+                       State tmp;
+                       tmp = state;
+                       tmp.set_cell(i, j, __BLACK__);
+                       tmp.evaluate(__HEURISTIC__);
+                       this->_SA_Successors.push_back(tmp);
+                   }
+               }
+           }
+       }
+
+       return best;
+   }
+
+   bool is_goal(State s) {
+       bool* colVal = new bool[this->_Size];
+       bool* rowVal = new bool[this->_Size];
+       for (auto i = 0; i < this->_Size; i++) {
+           //clear two value check lists
+           for (auto k = 0; k < this->_Size; k++)
+               colVal[i] = rowVal[i] = true;
+           for (auto j = 0; j < this->_Size; j++) {
+               //check 1
+               //if you have seen this number before with white color -> Row
+               if (rowVal[this->_NumbersBoard->_Board[i][j] - 1] == false && s.what_is(i, j) == __WHITE__)
+                   return false;
+               //else if the color of this number is white, set the value in the check list to false
+               else if (s.what_is(i, j) == __WHITE__)
+                   rowVal[this->_NumbersBoard->_Board[i][j] - 1] = false;
+               //if you have seen this number before with white color -> Col
+               if (colVal[this->_NumbersBoard->_Board[j][i] - 1] == false && s.what_is(j, i) == __WHITE__)
+                   return false;
+               //else if the color of this number is white, set the value in the check list to false
+               else if (s.what_is(j, i) == __WHITE__)
+                   colVal[this->_NumbersBoard->_Board[j][i] - 1] = false;
+           }
+       }
+       //it's Goal :)
+       return true;
+   }
+
+   int choose_random_hill() {
+       int s = 0;
+       int index = 0;
+       sort(this->_Hill_Climbing_Successors.begin(), this->_Hill_Climbing_Successors.end());
+       for (auto i = 0; i < this->_Hill_Climbing_Successors.size(); i++)
+           s = s + this->_Hill_Climbing_Successors[i]._Hvlaue;
+       srand(time(NULL));
+       int random = rand() % s + 1;
+       for (auto i = 0; i < this->_Hill_Climbing_Successors.size(); i++) {
+           if (random <= this->_Hill_Climbing_Successors[i]._Hvlaue) {
+               index = i;
+               break;
+           }
+       }
+       return index;
+   }
+
+   int choose_random_SA() {
+       srand(time(NULL));
+       int random = rand() % this->_SA_Successors.size();
+       return random;
+   }
+
+   State evaluate_state(State s, int type) {
+       //Heuristic #2
+       int val = 0;
+       int* rows = new int[this->_Size];
+       for (auto i = 0; i < this->_Size; i++)
+           rows[i] = 0;
+       int* cols = new int[this->_Size];
+       for (auto i = 0; i < this->_Size; i++)
+           cols[i] = 0;
+       if (type == __HEURISTIC_COST__ || type == __HEURISTIC__) {
+           for (auto i = 0; i < this->_Size; i++) {
+               for (auto j = 0; j < this->_Size; j++) {
+                   if (s.what_is(i, j) == __WHITE__) {
+                       rows[this->_NumbersBoard->_Board[i][j] - 1]++;
+                   }
+               }
+           }
+           for (auto i = 0; i < this->_Size; i++) {
+               for (auto j = 0; j < this->_Size; j++) {
+                   if (s.what_is(i, j) == __WHITE__) {
+                       rows[this->_NumbersBoard->_Board[j][i] - 1]++;
+                   }
+               }
+           }
+           for (auto i = 0; i < this->_Size; i++)
+               val++;
+           s._Hvlaue = val;
+           return s;
+       }
+       return s;
+   }
+
 public:
-	int Random();
-	void add(State* temp, int num) // num==2  hill ciliming & ...           num==1 for gredy & A*
-	{
-		if (num == 2) {
-			this->vec_list.push_back(*temp);
-		}
-		if (num == 1)
-			this->_queue.push(*temp);
-	}
+   //Constructor function with input file address argument
+   HitoriSolver(std::string inp) {
+       if (inp == "") {
+           _LogError("invalid input file address!");
+           return;
+       }
+       std::ifstream File;
+       File.open(inp);
+       if (!File.is_open()) {
+           _LogError("the input file is damaged or terminated!");
+           return;
+       }
+       File >> this->_Size;
+       this->_StartState = new State(this->_Size);
+       int** temp = new int* [this->_Size];
+       for (auto i = 0; i < _Size; i++)
+           temp[i] = new int[_Size];
+       for (auto i = 0; i < this->_Size; i++) {
+           for (auto j = 0; j < this->_Size; j++) {
+               File >> temp[i][j];
+           }
+       }
+       this->_NumbersBoard = new nBoard(temp, this->_Size);
+       this->_StartState = new State(this->_Size);
+   }
+   //Solve the game with Uniformed Cost Search Algorithm
+   bool solve_by_ucs() {
+       State init = *this->_StartState;
+       while (true) {
+           init = this->_successor(init, __UCS__);
+           if (init.get_size() == 0)
+               break;
+           if (this->is_goal(init))
+           {
+               this->_Found = init;
+               return true;
+           }
+       }
+       return false;
+   }
+   //Solve the game with Greedy Algorithm which uses only best heuristic
+   bool solve_by_Greedy() {
+       State init = *this->_StartState;
+       while (true) {
+           std::cout << "yes" << std::endl;
+           init = this->_successor(init, __GREEDY__);
+           if (init.get_size() == 0)
+               break;
+           if (this->is_goal(init))
+           {
+               this->_Found = init;
+               return true;
+           }
+       }
+       return false;
+   }
+   //Solve the game with A* Algorithm
+   bool solve_by_Astar() {
+       State init = *this->_StartState;
+       this->_PQueue.push(init);
+       while (!this->_PQueue.empty()) {
+           State tmp = this->_PQueue.top();
+           this->_PQueue.pop();
+           //tmp.printState();
+           if (this->is_goal(tmp)) {
+               this->_Found = tmp;
+               return true;
+           }
+           this->_successor(tmp, __ASTAR__);
+       }
+       return false;
+   }
+
+   //Solve the game with Simple Hill-Climbing Algorithm
+   bool solve_by_hillclimbing() {
+       State init = *this->_StartState;
+       while (true) {
+           State tmp = _successor(init, __HILL_CLIMBING__);
+           if (tmp.get_size() == 0)
+               break;
+           if (tmp > init) {
+               this->_Found = init;
+               return true;
+           }
+           init = tmp;
+       }
+       return false;
+   }
+   //Solve the game with Stochastic Hill-Climbing Algorithm
+   bool solve_by_stochastic_hillclimbing() {
+       State init = *this->_StartState;
+       while (true) {
+           _successor(init, __S_HILL_CLIMBING__);
+           if (this->_Hill_Climbing_Successors.size() == 0)
+               break;
+           State tmp = this->_Hill_Climbing_Successors[this->choose_random_hill()];
+           if (tmp > init) {
+               this->_Found = init;
+               return true;
+           }
+           init = tmp;
+       }
+       return false;
+   }
+
+   State solve_by_SA(int* temp, int Tsize) {
+       State init = *this->_StartState;
+       int T;
+       for (auto i = 0; i < Tsize; i++) {
+           T = temp[i];
+           if (T == 0)
+               return init;
+           State tmp = this->_SA_Successors[this->choose_random_SA()];
+           if (this->is_goal(tmp)) {
+               this->_Found = tmp;
+               return true;
+           }
+           if (tmp > init)
+               init = tmp;
+           else {
+               srand(time(NULL));
+               int tmp_index = pow(__E__, tmp._Hvlaue - init._Hvlaue);
+               int rand_index = rand() % 100 + 1;
+               if (rand_index <= tmp_index * 100)
+                   init = tmp;
+           }
+       }
+       return false;
+   }
+
+   void print_goal() {
+       for (auto i = 0; i < this->_Size; i++) {
+           for (auto j = 0; j < this->_Size; j++) {
+               if (this->_Found.what_is(i, j) == __BLACK__)
+                   std::cout << "  1  ";
+               else
+                   std::cout << "  0  ";
+           }
+           std::cout << std::endl;
+       }
+   }
 };
 
-bool State::Surrounding(State* current, int x, int y)
-{
+int main(int argc, const char* argv[]) {
 
-
-
-	int number = 0;
-	int up = 0;
-	int down = 0;
-	int right = 0;
-	int left = 0;
-	pair <int, int> *temp;
-	temp = new pair <int, int>[8];
-	for (int i = 0; i < 8; i++) {
-		temp[i].first = -1;
-		temp[i].second = -1;
-	}
-	if (x + 1 < current->Size)
-		if (current->colorboard[x + 1][y] == 2)
-			return false;
-	if (x - 1 >= 0)
-		if (current->colorboard[x - 1][y] == 2)
-			return false;
-	if (y - 1 >= 0)
-		if (current->colorboard[x][y - 1] == 2)
-			return false;
-	if (y + 1 < current->Size)
-		if (current->colorboard[x][y + 1] == 2)
-			return false;
-	//element existance checking
-	if (x - 1 >= 0 && x - 1 < this->Size && y + 1 >= 0 && y + 1 < this->Size) {// 0
-		temp[number].first = x - 1;
-		temp[number].second = y + 1;
-		down++;
-		left++;
-	}
-	number++;
-	if (x - 1 >= 0 && x - 1 < this->Size && y - 1 >= 0 && y - 1 < this->Size) { //1
-		temp[number].first = x - 1;
-		temp[number].second = y - 1;
-		up++;
-		left++;
-	}
-	number++;
-	if (x + 1 >= 0 && x + 1 < this->Size && y + 1 >= 0 && y + 1 < this->Size) {//2
-		temp[number].first = x + 1;
-		temp[number].second = y + 1;
-		right++;
-		down++;
-
-	}
-	number++;
-	if (x + 1 >= 0 && x + 1 < this->Size && y - 1 >= 0 && y - 1 < this->Size) {//3
-		temp[number].first = x + 1;
-		temp[number].second = y - 1;
-		right++;
-		up++;
-
-	}
-	number++;
-	if (x - 2 >= 0 && x - 2 < this->Size && y >= 0 && y < this->Size) {//4
-		temp[number].first = x - 2;
-		temp[number].second = y;
-		left++;
-	}
-	number++;
-	if (x + 2 >= 0 && x + 2 < this->Size && y >= 0 && y < this->Size) {//5
-		temp[number].first = x + 2;
-		temp[number].second = y;
-		right++;
-
-	}
-	number++;
-	if (x >= 0 && x < this->Size && y + 2 >= 0 && y + 2 < this->Size) {//6
-		temp[number].first = x;
-		temp[number].second = y + 2;
-		down++;
-	}
-	number++;
-	if (x >= 0 && x < this->Size && y - 2 >= 0 && y - 2 < this->Size) {//7
-		temp[number].first = x;
-		temp[number].second = y - 2;
-		up++;
-	}
-	number++;
-
-	//elements in upside of current
-	if (up > 2) { //when we have 3 elements 
-		if (current->colorboard[temp[1].first][temp[1].second] == 2 &&
-			current->colorboard[temp[7].first][temp[7].second] == 2 &&
-			current->colorboard[temp[3].first][temp[3].second] == 2)
-			return false;
-	}
-
-	if (up == 2) { //when we have 2 elements
-		if (temp[3].first == -1)
-			if (current->colorboard[temp[1].first][temp[1].second] == 2 &&
-				current->colorboard[temp[7].first][temp[7].second] == 2)
-				return false;
-		if (temp[7].first == -1)
-			if (current->colorboard[temp[1].first][temp[1].second] == 2 &&
-				current->colorboard[temp[3].first][temp[3].second] == 2)
-				return false;
-		if (temp[1].first == -1)
-			if (current->colorboard[temp[3].first][temp[3].second] == 2 &&
-				current->colorboard[temp[7].first][temp[7].second] == 2)
-				return false;
-	}
-	if (up == 1) { // when we have an element
-		if (temp[3].first == -1 && temp[7].first == -1)
-			if (current->colorboard[temp[1].first][temp[1].second] == 2)
-				return false;
-		if (temp[1].first == -1 && temp[7].first == -1)
-			if (current->colorboard[temp[3].first][temp[3].second] == 2)
-				return false;
-	}
-
-	//elements in leftside of current
-	if (left > 2) { //when we have 3 elements 
-		if (current->colorboard[temp[0].first][temp[0].second] == 2 &&
-			current->colorboard[temp[4].first][temp[4].second] == 2 &&
-			current->colorboard[temp[1].first][temp[1].second] == 2)
-			return false;
-	}
-	if (left == 2) {//when we have 2 elements
-		if (temp[1].first == -1)
-			if (current->colorboard[temp[4].first][temp[4].second] == 2 &&
-				current->colorboard[temp[0].first][temp[0].second] == 2)
-				return false;
-		if (temp[0].first == -1)
-			if (current->colorboard[temp[4].first][temp[4].second] == 2 &&
-				current->colorboard[temp[1].first][temp[1].second] == 2)
-				return false;
-		if (temp[4].first == -1)
-			if (current->colorboard[temp[0].first][temp[0].second] == 2 &&
-				current->colorboard[temp[1].first][temp[1].second] == 2)
-				return false;
-	}
-	if (left == 1) {// when we have an element
-		if (temp[1].first == -1 && temp[4].first == -1)
-			if (current->colorboard[temp[0].first][temp[1].second] == 2)
-				return false;
-		if (temp[0].first == -1 && temp[4].first == -1)
-			if (current->colorboard[temp[1].first][temp[3].second] == 2)
-				return false;
-	}
-
-	//elements in rightside of current
-	if (right > 2) {//when we have 3 elements 
-		if (current->colorboard[temp[3].first][temp[3].second] == 2 &&
-			current->colorboard[temp[5].first][temp[5].second] == 2 &&
-			current->colorboard[temp[2].first][temp[2].second] == 2)
-			return false;
-	}
-	if (right == 2) {//when we have 2 elements
-		if (temp[5].first == -1)
-			if (current->colorboard[temp[3].first][temp[3].second] == 2 &&
-				current->colorboard[temp[2].first][temp[2].second] == 2)
-				return false;
-		if (temp[3].first == -1)
-			if (current->colorboard[temp[5].first][temp[5].second] == 2 &&
-				current->colorboard[temp[2].first][temp[2].second] == 2)
-				return false;
-		if (temp[2].first == -1)
-			if (current->colorboard[temp[3].first][temp[3].second] == 2 &&
-				current->colorboard[temp[5].first][temp[5].second] == 2)
-				return false;
-	}
-	if (right == 1) {// when we have an element
-		if (temp[3].first == -1 && temp[5].first == -1)
-			if (current->colorboard[temp[2].first][temp[2].second] == 2)
-				return false;
-		if (temp[2].first == -1 && temp[5].first == -1)
-			if (current->colorboard[temp[3].first][temp[3].second] == 2)
-				return false;
-	}
-
-	//elements in downside of current
-	if (down > 2) {//when we have 3 elements 
-		if (current->colorboard[temp[2].first][temp[2].second] == 2 &&
-			current->colorboard[temp[6].first][temp[6].second] == 2 &&
-			current->colorboard[temp[0].first][temp[0].second] == 2)
-			return false;
-
-	}
-	if (down == 2) {//when we have 2 elements
-		if (temp[2].first == -1)
-			if (current->colorboard[temp[0].first][temp[0].second] == 2 &&
-				current->colorboard[temp[6].first][temp[6].second] == 2)
-				return false;
-		if (temp[0].first == -1)
-			if (current->colorboard[temp[6].first][temp[6].second] == 2 &&
-				current->colorboard[temp[2].first][temp[2].second] == 2)
-				return false;
-		if (temp[6].first == -1) {
-
-			if (current->colorboard[temp[2].first][temp[2].second] == 2 &&
-				current->colorboard[temp[0].first][temp[0].second] == 2)
-				return false;
-		}
-	}
-	if (down == 1) {// when we have an element
-					//cout << "x :" << x << "  Y: " << y << "\t" << current->board[x][y] << endl;
-		if (temp[0].first == -1 && temp[6].first == -1)
-			if (current->colorboard[temp[2].first][temp[2].second] == 2)
-				return false;
-		if (temp[2].first == -1 && temp[6].first == -1)
-			if (current->colorboard[temp[0].first][temp[0].second] == 2)
-				return false;
-	}
-
-	return true;
+   HitoriSolver* AI_Final = new HitoriSolver("input.txt");
+   bool res = AI_Final->solve_by_Astar();
+   if (res == false)
+       std::cout << "No" << std::endl;
+   else
+       AI_Final->print_goal();;
 }
-
-bool State::Is_goal()
-{
-	for (int i = 0; i < Size; i++)
-		for (int j = 0; j < Size; j++) {
-			if (colorboard[i][j] != 2)
-				for (int k = 0; k < Size; k++) {
-					if (board[i][j] == board[i][k] && colorboard[i][k] != 2 && j != k)
-						return false;
-					if (board[i][j] == board[k][j] && colorboard[k][j] != 2 && i != k)
-						return false;
-				}
-
-		}
-	return true;
-}
-int State::Check(int x, int y, State*current) // dashtane tekrari
-{
-	int n = 0;
-	int temp = board[x][y];
-	for (int i = 0; i < Size; i++) {
-		if (board[i][y] == temp && colorboard[i][y] != 2 && x != i) {
-			n++;
-		}
-		if (board[x][i] == temp && colorboard[x][i] != 2 && y != i) {
-			n++;
-		}
-	}
-	return n;
-}
-void State::Hill_climbing(Hitori *temp, State*current_state)
-{
-	expandingHC++;
-	Successor(temp, current_state, 2);
-	if (temp->vec_list.size() > number_of_size)
-		number_of_size = temp->vec_list.size();
-	if (temp->vec_list.size() == 0) {
-		current_state->print();
-		cout << "win!!!\n";
-		//cout << "size number : " << number_of_size<<"\n"<<"number of successor: " << expandingHC<<"\n";
-		return;
-	}
-	State temp_s;
-	if (Is_goal()) {
-		current_state->print();
-		//	cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingHC << "\n";
-		cout << "win!!!\n";
-		return;
-	}
-	if (temp->vec_list.size() != 0)
-		temp_s = temp->vec_list[0];
-	for (int i = 0; i<temp->vec_list.size(); i++) {// empty !!
-		if (temp_s.h <= temp->vec_list[i].h) {
-			temp_s = temp->vec_list[i];
-			if (Is_goal()) {
-				current_state->print();
-				cout << "\nwin!!!\n";
-				//cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingHC << "\n";
-
-				return;
-			}
-		}
-	}
-	temp->vec_list.clear();
-	Hill_climbing(temp, &temp_s);
-
-}
-
-void State::Random_Hill_climbing(Hitori *temp, State*current_state)
-{
-
-	if (Is_goal()) {
-
-		cout << "win!!!\n";
-		return;
-	}
-	State temp_s;
-	expandingRHC++;
-	Successor(temp, current_state, 2);
-	if (temp->vec_list.size() > number_of_size)
-		number_of_size = temp->vec_list.size();
-	if (temp->vec_list.size() == 0) {
-		current_state->print();
-		cout << "win!!!\n";
-		//cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingRHC << "\n";
-		return;
-	}
-	if (temp->vec_list.size() != 0) {
-		temp_s = temp->vec_list[temp->Random()];
-		temp->vec_list.clear();
-		Random_Hill_climbing(temp, &temp_s);
-	}
-	return;
-}
-void State::SA(Hitori *temp)
-{
-	static double T = 1;
-	State * current;
-	State * next;
-	double r;
-	current = this;
-	double E = 0;
-	expandingSA++;
-	Successor(temp, current, 2);
-	if (temp->vec_list.size() > number_of_size)
-		number_of_size = temp->vec_list.size();
-	static double Tmin = .0001;
-	static double alpha = 0.9;// Decrease in temperature 
-	while (T > Tmin) {
-		//current->print();
-		if (current->Is_goal()) {
-			current->print();
-			//	cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingSA << "\n";
-			cout << "win!!!\n";
-			return;
-		}
-		if (temp->vec_list.size() == 0)
-			return;
-		int RandIndex = rand() % temp->vec_list.size();
-
-		next = &temp->vec_list[RandIndex];
-		E = next->h1 - current->h;
-		if (E > 0)
-			current = next;
-		else {
-			double probability = exp(E / T);
-			r = ((double)rand() / (RAND_MAX));
-			if (probability > r)
-				current = next;
-		}
-
-		expandingSA++;
-		temp->vec_list.clear();
-		Successor(temp, current, 2);
-		//current->print();
-		if (temp->vec_list.size() == 0) {
-			current->print();
-			//cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingSA << "\n";
-			cout << "win!!!\n";
-			return;
-		}
-
-		T *= alpha; // Decreases T
-	}
-
-}
-void State::Astar(Hitori *temp)
-{
-	State  top;
-	this->h++;
-	expandingA++;
-	Successor(temp, this, 1);
-	if (temp->_queue.size() > number_of_size)
-		number_of_size = temp->_queue.size();
-	while (!temp->_queue.empty()) {
-		top = temp->_queue.top();
-		if (top.Is_goal()) {
-			top.print();
-			//cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingA << "\n";
-			cout << "win!!!\n";
-			return;
-		}
-		top.h++;
-		expandingA++;
-		//	cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingA << "\n";
-		Successor(temp, &top, 1);
-		if (temp->_queue.size() > number_of_size)
-			number_of_size = temp->_queue.size();
-		temp->_queue.pop();
-	}
-}
-int State::Find_numer_of_same()
-{
-	int sum = 0;
-	for (int i = 0; i < Size; i++) {
-		for (int j = 0; j < Size; j++) {
-			int n = 0;
-			int temp = board[i][j];
-			for (int k = 0; k < Size; k++) {
-				if (board[k][j] == temp && colorboard[k][j] != 2 && i != k) {
-					n++;
-				}
-				if (board[i][k] == temp && colorboard[i][k] != 2 && j != k) {
-					n++;
-				}
-			}
-			sum += n;
-		}
-	}
-	return sum;
-}
-int Hitori::Random()
-{
-	srand(time(NULL));
-	vector<float> numbers;
-	int n;
-	int m;
-	int min = 0;
-	int min_index = 0;
-	int sum = 0;
-	int negetive_m = 0;
-	for (int i = 0; i < this->vec_list.size(); i++) {
-		sum += this->vec_list[i].h;
-	}
-	for (int i = 0; i < this->vec_list.size(); i++) {
-		numbers.push_back(this->vec_list[i].h*sum);
-	}
-	n = rand() % (sum*sum);
-	for (int i = 0; i < numbers.size(); i++) {
-		m = numbers[i] - n;
-		if (m >= 0)
-		{
-			if (min > m) {
-				min = m;
-				min_index = i;
-			}
-		}
-		else {
-			if (min > m) {
-				min = m;
-				min_index = i;
-			}
-		}
-	}
-
-	return min_index;
-}
-void State::Successor(Hitori*_Hitori, State*current, int num)
-{
-	State * S_temp = NULL;
-	for (int i = 0; i < current->Size; i++) {
-		for (int j = 0; j < current->Size; j++) {
-			if (current->colorboard[i][j] == 0) {
-				if (Check(i, j, current) > 0) { //      tekrari dashte bashe dar satr va soton
-
-					int temp = current->board[i][j];
-					if (Surrounding(current, i, j)) {// sharayet siah shodan dashte bashe
-
-						if (i == 0 && j == 0) { //corner 1  (left_up)
-
-							if (current->board[i + 1][j] == temp && current->board[i][j + 1] == temp) {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-							else {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-						}
-						else if (i == current->Size - 1 && j == 0) { //corner 2 (right_up)
-							if (current->board[i - 1][j] == temp && current->board[i][j + 1] == temp) {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-
-							}
-							else {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-						}
-						if (i == current->Size - 1 && j == current->Size - 1) { //corner 3 (right_down)
-							if (current->board[i - 1][j] == temp && current->board[i][j - 1] == temp) {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-							else {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-						}
-						if (i == 0 && j == current->Size - 1) { //corner 4   (left_down)
-							if (current->board[i + 1][j] == temp && current->board[i][j - 1] == temp) {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-							else {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 2;
-								S_temp->h++;
-								h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-						}
-						if (i - 1 >= 0 && i + 1 < current->Size) {
-							if ((current->board[i - 1][j] == current->board[i + 1][j])) { // A S A      s nabyad packshe
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 1;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-						}
-						if (j - 1 >= 0 && j + 1 < current->Size) {
-							if ((current->board[i][j - 1] == current->board[i][j + 1])) { // A S A      s nabyad packshe
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 1;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-						}
-						if (((i - 1 >= 0 && i + 1 < current->Size) && (j - 1 >= 0 && j + 1 < current->Size))) {
-							if ((current->board[i][j - 1] == current->board[i][j + 1]) || (current->board[i - 1][j] == current->board[i + 1][j])) {
-								S_temp = new State(*current);
-								S_temp->colorboard[i][j] = 1;
-								S_temp->h++;
-								S_temp->h1 = S_temp->Find_numer_of_same();
-								if (num == 2)
-									_Hitori->add(S_temp, 2);
-								else
-									_Hitori->add(S_temp, 1);
-							}
-						}
-						else {
-
-							S_temp = new State(*current);
-							S_temp->colorboard[i][j] = 2;
-							S_temp->h++;
-							S_temp->h1 = S_temp->Find_numer_of_same();
-							if (num == 2)
-								_Hitori->add(S_temp, 2);
-							else
-								_Hitori->add(S_temp, 1);
-						}
-
-					}
-
-				}
-				else {
-					S_temp = new State(*current);
-					S_temp->colorboard[i][j] = 1;
-					S_temp->h1 = S_temp->Find_numer_of_same();
-					if (num == 2)
-						_Hitori->add(S_temp, 2);
-					else
-						_Hitori->add(S_temp, 1);
-				}
-			}
-		}
-	}
-}
-void State::Read(string Address)
-{
-	fstream file;
-	file.open(Address);
-	if (!file) {
-		cout << "file khondeh nashoedeh!!";
-		return;
-	}
-	file >> Size;
-	this->board = new int*[Size];
-	this->colorboard = new int*[Size];
-	for (int i = 0; i < Size; i++) {
-		this->board[i] = new int[Size];
-		this->colorboard[i] = new int[Size];
-	}
-	int temp;
-	for (int i = 0; i <this->Size; i++) {
-		for (int j = 0; j < this->Size; j++) {
-			file >> temp;
-			this->board[j][i] = temp;
-			this->colorboard[j][i] = 0;
-		}
-	}
-
-}
-void State::print()
-{
-	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-	for (int i = 0; i < this->Size; i++) {
-		for (int j = 0; j < this->Size; j++) {
-			if (this->colorboard[j][i] == 2)
-			{
-
-				SetConsoleTextAttribute(hConsole, 7);
-				cout << " " << this->board[j][i] << " ";
-			}
-			else {
-				SetConsoleTextAttribute(hConsole, 240);
-				cout << " " << this->board[j][i] << " ";
-
-			}
-		}
-		SetConsoleTextAttribute(hConsole, 240);
-		cout << "\n";
-	}
-	cout << endl;
-	cout << "\n";
-}
-
-void State::Gredy(Hitori *temp)
-{
-	State  top;
-	expandingGreedy++;
-	Successor(temp, this, 1);
-	if (temp->_queue.size() > number_of_size)
-		number_of_size = temp->_queue.size();
-	while (!temp->_queue.empty()) {
-
-		top = temp->_queue.top();
-
-		if (top.Is_goal()) {
-			top.print();
-			//cout << "size number : " << number_of_size << "\n" << "number of successor: " << expandingGreedy << "\n";
-			cout << "win!!!\n";
-			return;
-		}
-		expandingGreedy++;
-		Successor(temp, &top, 1);
-		if (temp->_queue.size() > number_of_size)
-			number_of_size = temp->_queue.size();
-		temp->_queue.pop();
-
-	}
-}
-int main() {
-	int n;
-
-
-	Hitori _Hitori;
-	State _State;
-	_State.Read("input.txt");
-	//clock_t time = clock();
-
-
-	//_State.Gredy(&_Hitori);
-	//_State.Hill_climbing(&_Hitori, &_State);
-	//_State.Random_Hill_climbing(&_Hitori, &_State);
-	//_State.Astar(&_Hitori);
-	//_State.SA(&_Hitori);
-	//time = clock() - time;
-	//cout << endl << ("Time taken: ", (float)(time) / CLOCKS_PER_SEC) << endl;
-
-	cin >> n;
-	return 0;
-}
-
