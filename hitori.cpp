@@ -1,5 +1,6 @@
 /* " AI project "
-Hitori is played with a grid of squares or cells, with each cell initially containing a number. The game is played by eliminating squares/numbers and this is done by blacking them out. The objective is to transform the grid to a state wherein all three following rules are true:
+Hitori is played with a grid of squares or cells, with each cell initially containing a number. 
+The game is played by eliminating squares/numbers and this is done by blacking them out. The objective is to transform the grid to a state wherein all three following rules are true:
 
 1- no row or column can have more than one occurrence of any given number
 2- black cells cannot be adjacent, although they can be diagonal to one another.
