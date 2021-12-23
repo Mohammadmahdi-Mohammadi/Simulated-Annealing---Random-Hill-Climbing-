@@ -812,6 +812,7 @@ void State::Gredy(Hitori *temp)
 int main() {
 	int n;
 
+
 	Hitori _Hitori;
 	State _State;
 	_State.Read("input.txt");
